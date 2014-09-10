@@ -31,10 +31,10 @@
 package sonos_test
 
 import (
-	"github.com/ianr0bkny/go-sonos"
 	"github.com/ianr0bkny/go-sonos/config"
 	"github.com/ianr0bkny/go-sonos/didl"
 	"github.com/ianr0bkny/go-sonos/upnp"
+	"github.com/ninjasphere/go-sonos"
 	"log"
 	"strings"
 	"testing"

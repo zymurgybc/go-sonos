@@ -401,7 +401,7 @@ func (this *SystemProperties) RefreshAccountCredentialsX(accountType uint32, acc
 	}
 	args := []Arg{
 		{"AccountType", accountType},
-		{"AccountToken,", accountToken,},
+		{"AccountToken,", accountToken},
 		{"AccountKey,", accountKey},
 	}
 	response := this.Svc.Call("RefreshAccountCredentialsX", args)
