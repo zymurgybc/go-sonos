@@ -33,7 +33,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/ianr0bkny/go-sonos/config"
+	"github.com/ninjasphere/go-sonos/config"
 	"github.com/ninjasphere/go-sonos"
 	_ "log"
 )

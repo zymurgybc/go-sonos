@@ -31,7 +31,7 @@
 package config_test
 
 import (
-	"github.com/ianr0bkny/go-sonos/config"
+	"github.com/ninjasphere/go-sonos/config"
 	"github.com/ninjasphere/go-sonos"
 	"log"
 	"os"

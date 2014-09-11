@@ -32,7 +32,7 @@ package upnp
 
 import (
 	"encoding/xml"
-	"github.com/ianr0bkny/go-sonos/didl"
+	"github.com/ninjasphere/go-sonos/didl"
 	_ "log"
 )
 
