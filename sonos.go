@@ -34,9 +34,10 @@
 package sonos
 
 import (
+	_ "log"
+
 	"github.com/ninjasphere/go-sonos/ssdp"
 	"github.com/ninjasphere/go-sonos/upnp"
-	_ "log"
 )
 
 const MUSIC_SERVICES = "schemas-upnp-org-MusicServices"
@@ -106,6 +107,7 @@ func sonosCheckServiceFlags(svc_type string, flags int) bool {
 }
 
 func MakeSonos(svc_map upnp.ServiceMap, reactor upnp.Reactor, flags int) (sonos *Sonos) {
+
 	sonos = &Sonos{}
 	for svc_type, svc_list := range svc_map {
 		if !sonosCheckServiceFlags(svc_type, flags) {
@@ -236,14 +238,14 @@ func Connect(dev ssdp.Device, reactor upnp.Reactor, flags int) (sonos *Sonos) {
 	return
 }
 
-func MakeReactor(ifiname, port string) upnp.Reactor {
+func MakeReactor(port int) upnp.Reactor {
 	reactor := upnp.MakeReactor()
-	reactor.Init(ifiname, port)
+	reactor.Init(port)
 	return reactor
 }
 
-func Discover(ifiname, port string) (mgr ssdp.Manager, err error) {
+func Discover(port int) (mgr ssdp.Manager, err error) {
 	mgr = ssdp.MakeManager()
-	mgr.Discover(ifiname, port, false)
+	mgr.Discover(port, false)
 	return
 }

@@ -49,7 +49,6 @@ package ssdp
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -283,12 +282,11 @@ type ServiceQueryTerms map[ServiceKey]int64
 
 // Encapsulates SSDP discovery, handles updates, and stores results
 type Manager interface {
-	// Initiates SSDP discovery, where ifiname names a network device
-	// to query, port gives a free port on that network device to listen
-	// for responses, and the subscribe flag (currrently unimplemented)
+	// Initiates SSDP discovery, where port gives a free port on that network
+	// device to listen for responses, and the subscribe flag (currrently unimplemented)
 	// determines whether to listen to asynchronous updates after the
 	// initial query is complete.
-	Discover(ifiname, port string, subscribe bool) error
+	Discover(port int, subscribe bool) error
 	// After discovery is complete searches for devices implementing
 	// the services specified in query.
 	QueryServices(query ServiceQueryTerms) ServiceMap
@@ -325,8 +323,8 @@ func MakeManager() Manager {
 	return mgr
 }
 
-func (this *ssdpDefaultManager) Discover(ifiname, port string, subscribe bool) (err error) {
-	this.ssdpDiscoverImpl(ifiname, port, subscribe)
+func (this *ssdpDefaultManager) Discover(port int, subscribe bool) (err error) {
+	this.ssdpDiscoverImpl(port, subscribe)
 	return
 }
 
@@ -573,6 +571,7 @@ func (this *ssdpDefaultManager) ssdpHandleResponse(raw *ssdpRawMessage) *ssdpRes
 }
 
 func (this *ssdpDefaultManager) ssdpHandleMessage(raw *ssdpRawMessage) {
+
 	switch raw.msgtype {
 	case ssdpSearch: /*ignore*/
 	case ssdpResponse:
@@ -598,19 +597,8 @@ func (this *ssdpDefaultManager) ssdpDiscoverLoop(conn net.Conn) {
 	}
 }
 
-func (this *ssdpDefaultManager) ssdpUnicastDiscoverImpl(ifi *net.Interface, port string) (err error) {
-	addrs, err := ifi.Addrs()
-	if nil != err {
-		return
-	} else if 0 == len(addrs) {
-		err = errors.New(fmt.Sprintf("No addresses found for interface %s", ifi.Name))
-		return
-	}
-	lip := addrs[0].(*net.IPNet).IP
-	laddr, err := net.ResolveUDPAddr(ssdpBroadcastVersion, net.JoinHostPort(lip.String(), port))
-	if nil != err {
-		return
-	}
+func (this *ssdpDefaultManager) ssdpUnicastDiscoverImpl(port int) (err error) {
+	laddr := &net.UDPAddr{Port: port}
 	uc, err := net.ListenUDP(ssdpBroadcastVersion, laddr)
 	if nil != err {
 		return
@@ -622,7 +610,7 @@ func (this *ssdpDefaultManager) ssdpUnicastDiscoverImpl(ifi *net.Interface, port
 	return
 }
 
-func (this *ssdpDefaultManager) ssdpMulticastDiscoverImpl(ifi *net.Interface, subscribe bool) (err error) {
+func (this *ssdpDefaultManager) ssdpMulticastDiscoverImpl(subscribe bool) (err error) {
 	maddr, err := net.ResolveUDPAddr(ssdpBroadcastVersion, ssdpBroadcastGroup)
 	if nil != err {
 		return
@@ -630,7 +618,7 @@ func (this *ssdpDefaultManager) ssdpMulticastDiscoverImpl(ifi *net.Interface, su
 	this.multicast.addr = maddr
 	var mc *net.UDPConn
 	if subscribe {
-		mc, err = net.ListenMulticastUDP(ssdpBroadcastVersion, ifi, maddr)
+		mc, err = net.ListenMulticastUDP(ssdpBroadcastVersion, nil, maddr)
 		if nil != err {
 			return
 		}
@@ -895,13 +883,10 @@ func (this *ssdpDefaultManager) ssdpQueryLoop() (err error) {
 	return
 }
 
-func (this *ssdpDefaultManager) ssdpDiscoverImpl(ifiname, port string, subscribe bool) {
-	ifi, err := net.InterfaceByName(ifiname)
-	if nil != err {
+func (this *ssdpDefaultManager) ssdpDiscoverImpl(port int, subscribe bool) {
+	if err := this.ssdpUnicastDiscoverImpl(port); nil != err {
 		panic(err)
-	} else if err = this.ssdpUnicastDiscoverImpl(ifi, port); nil != err {
-		panic(err)
-	} else if err = this.ssdpMulticastDiscoverImpl(ifi, subscribe); nil != err {
+	} else if err = this.ssdpMulticastDiscoverImpl(subscribe); nil != err {
 		panic(err)
 	} else if err = this.ssdpQueryLoop(); nil != err {
 		panic(err)

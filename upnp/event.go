@@ -38,6 +38,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -57,7 +58,7 @@ type EventFactory interface {
 }
 
 type Reactor interface {
-	Init(ifiname, port string)
+	Init(port int)
 	Subscribe(svc *Service, factory EventFactory) error
 	Channel() chan Event
 }
@@ -106,11 +107,10 @@ type Event interface {
 }
 
 type upnpDefaultReactor struct {
-	ifiname     string
-	port        string
+	localAddr   string
+	port        int
 	initialized bool
 	server      *http.Server
-	localAddr   string
 	eventMap    upnpEventMap
 	subscrChan  chan *upnpEventRecord
 	unpackChan  chan *upnpEvent
@@ -121,33 +121,36 @@ func (this *upnpDefaultReactor) serve() {
 	log.Fatal(this.server.ListenAndServe())
 }
 
-func (this *upnpDefaultReactor) Init(ifiname, port string) {
+func (this *upnpDefaultReactor) Init(port int) {
 	if this.initialized {
 		panic("Attempt to reinitialize reactor")
 	}
 
-	ifi, err := net.InterfaceByName(ifiname)
+	// TODO: FIXME!
+	name, err := os.Hostname()
 	if err != nil {
-		panic(err)
+		panic("Can't find hostname")
 	}
-	addrs, err := ifi.Addrs()
+
+	addrs, err := net.LookupHost(name)
 	if err != nil {
-		panic(err)
+		panic("Can't find local ip")
 	}
+
+	this.localAddr = addrs[0]
+	log.Printf("go-sonos: Temporary: Using local IP %s", this.localAddr)
 
 	this.initialized = true
 	this.port = port
-	this.ifiname = ifiname
-	this.localAddr = net.JoinHostPort(addrs[0].(*net.IPNet).IP.String(), port)
 	this.server = &http.Server{
-		Addr:           ":" + port,
+		Addr:           fmt.Sprintf(":%d", port),
 		Handler:        nil,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 	http.Handle("/eventSub", this)
-	log.Printf("Listening for events on %s", this.localAddr)
+	log.Printf("Listening for events on :%d", port)
 	go this.run()
 	go this.serve()
 }
@@ -176,6 +179,7 @@ func (this *upnpDefaultReactor) Channel() chan Event {
 }
 
 func (this *upnpDefaultReactor) subscribeImpl(rec *upnpEventRecord) (err error) {
+
 	client := &http.Client{}
 	req, err := http.NewRequest("SUBSCRIBE", rec.svc.eventSubURL.String(), nil)
 	if nil != err {
