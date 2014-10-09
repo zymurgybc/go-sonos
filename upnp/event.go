@@ -38,7 +38,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -121,24 +120,57 @@ func (this *upnpDefaultReactor) serve() {
 	log.Fatal(this.server.ListenAndServe())
 }
 
+func externalIP() (string, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue // loopback interface
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return "", err
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil {
+				continue // not an ipv4 address
+			}
+			return ip.String(), nil
+		}
+	}
+	return "", errors.New("are you connected to the network?")
+}
+
 func (this *upnpDefaultReactor) Init(port int) {
 	if this.initialized {
 		panic("Attempt to reinitialize reactor")
 	}
 
 	// TODO: FIXME!
-	name, err := os.Hostname()
+	ip, err := externalIP()
 	if err != nil {
-		panic("Can't find hostname")
+		panic("Can't find IP")
 	}
 
-	addrs, err := net.LookupHost(name)
-	if err != nil {
-		panic("Can't find local ip")
-	}
+	this.localAddr = ip
 
-	this.localAddr = addrs[0]
-	log.Printf("go-sonos: Temporary: Using local IP %s", this.localAddr)
+	log.Printf("go-sonos: Using local IP %s", this.localAddr)
 
 	this.initialized = true
 	this.port = port
