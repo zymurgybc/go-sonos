@@ -217,7 +217,7 @@ func (this *upnpDefaultReactor) subscribeImpl(rec *upnpEventRecord) (err error) 
 	if nil != err {
 		return
 	}
-	req.Header.Add("CALLBACK", fmt.Sprintf("<http://%s/eventSub>", this.localAddr))
+	req.Header.Add("CALLBACK", fmt.Sprintf("<http://%s:%d/eventSub>", this.localAddr, this.port))
 	req.Header.Add("HOST", rec.svc.eventSubURL.Host)
 	req.Header.Add("USER-AGENT", "unix/5.1 UPnP/1.1 sonos.go/1.0")
 	req.Header.Add("NT", "upnp:event")
