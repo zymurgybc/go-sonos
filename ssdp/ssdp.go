@@ -889,6 +889,9 @@ func (this *ssdpDefaultManager) ssdpDiscoverImpl(port int, subscribe bool) {
 	} else if err = this.ssdpMulticastDiscoverImpl(subscribe); nil != err {
 		panic(err)
 	} else if err = this.ssdpQueryLoop(); nil != err {
-		panic(err)
+		log.Printf("issue transmitting discovery packet: %s", err)
+		// Need to look into this futher, it would seem this is trying to do a multicast request using the wrong model.
+		// panic(err)
+		//
 	}
 }
