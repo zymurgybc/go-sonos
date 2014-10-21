@@ -49,6 +49,7 @@ package ssdp
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -323,8 +324,53 @@ func MakeManager() Manager {
 	return mgr
 }
 
+//
+// Need to rationalise these functions as we also have one in
+// event.go. This one needs to return the interface name for the multicast bind.
+//
+func externalInterface() (string, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue // loopback interface
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return "", err
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil {
+				continue // not an ipv4 address
+			}
+			return iface.Name, nil
+		}
+	}
+	return "", errors.New("are you connected to the network?")
+}
+
 func (this *ssdpDefaultManager) Discover(port int, subscribe bool) (err error) {
-	this.ssdpDiscoverImpl(port, subscribe)
+	ifname, err := externalInterface()
+	if err != nil {
+		return
+	}
+	this.ssdpDiscoverImpl(ifname, port, subscribe)
 	return
 }
 
@@ -597,8 +643,20 @@ func (this *ssdpDefaultManager) ssdpDiscoverLoop(conn net.Conn) {
 	}
 }
 
-func (this *ssdpDefaultManager) ssdpUnicastDiscoverImpl(port int) (err error) {
-	laddr := &net.UDPAddr{Port: port}
+func (this *ssdpDefaultManager) ssdpUnicastDiscoverImpl(ifi *net.Interface, port string) (err error) {
+	addrs, err := ifi.Addrs()
+	if nil != err {
+		return
+	} else if 0 == len(addrs) {
+		err = errors.New(fmt.Sprintf("No addresses found for interface %s", ifi.Name))
+		return
+	}
+	lip := addrs[0].(*net.IPNet).IP
+	laddr, err := net.ResolveUDPAddr(ssdpBroadcastVersion, net.JoinHostPort(lip.String(), port))
+	if nil != err {
+		return
+	}
+	log.Printf("ssdpUnicastDiscoverImpl Binding to %s", laddr.String())
 	uc, err := net.ListenUDP(ssdpBroadcastVersion, laddr)
 	if nil != err {
 		return
@@ -610,7 +668,7 @@ func (this *ssdpDefaultManager) ssdpUnicastDiscoverImpl(port int) (err error) {
 	return
 }
 
-func (this *ssdpDefaultManager) ssdpMulticastDiscoverImpl(subscribe bool) (err error) {
+func (this *ssdpDefaultManager) ssdpMulticastDiscoverImpl(ifi *net.Interface, subscribe bool) (err error) {
 	maddr, err := net.ResolveUDPAddr(ssdpBroadcastVersion, ssdpBroadcastGroup)
 	if nil != err {
 		return
@@ -618,7 +676,8 @@ func (this *ssdpDefaultManager) ssdpMulticastDiscoverImpl(subscribe bool) (err e
 	this.multicast.addr = maddr
 	var mc *net.UDPConn
 	if subscribe {
-		mc, err = net.ListenMulticastUDP(ssdpBroadcastVersion, nil, maddr)
+		log.Printf("ssdpMulticastDiscoverImpl Binding to %s on %s", maddr.String(), ifi.Name)
+		mc, err = net.ListenMulticastUDP(ssdpBroadcastVersion, ifi, maddr)
 		if nil != err {
 			return
 		}
@@ -883,10 +942,13 @@ func (this *ssdpDefaultManager) ssdpQueryLoop() (err error) {
 	return
 }
 
-func (this *ssdpDefaultManager) ssdpDiscoverImpl(port int, subscribe bool) {
-	if err := this.ssdpUnicastDiscoverImpl(port); nil != err {
+func (this *ssdpDefaultManager) ssdpDiscoverImpl(ifiname string, port int, subscribe bool) {
+	ifi, err := net.InterfaceByName(ifiname)
+	if nil != err {
 		panic(err)
-	} else if err = this.ssdpMulticastDiscoverImpl(subscribe); nil != err {
+	} else if err := this.ssdpUnicastDiscoverImpl(ifi, fmt.Sprintf("%d", port)); nil != err {
+		panic(err)
+	} else if err = this.ssdpMulticastDiscoverImpl(ifi, subscribe); nil != err {
 		panic(err)
 	} else if err = this.ssdpQueryLoop(); nil != err {
 		log.Printf("issue transmitting discovery packet: %s", err)
