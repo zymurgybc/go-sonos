@@ -34,6 +34,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -96,7 +97,6 @@ type upnpDescribeService_XML struct {
 type upnpDescribeServiceJob struct {
 	result     chan *Service
 	err_result chan error
-	response   *http.Response
 	doc        upnpDescribeService_XML
 	svc        *Service
 }
@@ -260,9 +260,8 @@ func (this *upnpDescribeServiceJob) Unpack() {
 	return
 }
 
-func (this *upnpDescribeServiceJob) Parse() {
-	defer this.response.Body.Close()
-	if body, err := ioutil.ReadAll(this.response.Body); nil == err {
+func (this *upnpDescribeServiceJob) Parse(reader io.Reader) {
+	if body, err := ioutil.ReadAll(reader); nil == err {
 		xml.Unmarshal(body, &this.doc)
 		this.Unpack()
 		this.result <- this.svc
@@ -272,11 +271,11 @@ func (this *upnpDescribeServiceJob) Parse() {
 }
 
 func (this *upnpDescribeServiceJob) Describe() {
-	var err error
 	uri := this.svc.scpdURL.String()
 	log.Printf("Loading %s", string(uri))
-	if this.response, err = http.Get(string(uri)); nil == err {
-		this.Parse()
+	if response, err := http.Get(string(uri)); nil == err {
+		defer response.Body.Close()
+		this.Parse(response.Body)
 	} else {
 		this.err_result <- err
 	}
