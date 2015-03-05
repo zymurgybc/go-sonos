@@ -31,22 +31,24 @@
 package sonos_test
 
 import (
-	"github.com/ninjasphere/go-sonos/config"
-	"github.com/ninjasphere/go-sonos/didl"
-	"github.com/ninjasphere/go-sonos/upnp"
-	"github.com/ninjasphere/go-sonos"
 	"log"
 	"strings"
 	"testing"
+
+	"github.com/ninjasphere/go-sonos"
+	"github.com/ninjasphere/go-sonos/config"
+	"github.com/ninjasphere/go-sonos/didl"
+	"github.com/ninjasphere/go-sonos/ssdp"
+	"github.com/ninjasphere/go-sonos/upnp"
 )
 
 const (
-	TEST_CONFIG        = "/home/ianr/.go-sonos"
-	TEST_SONOS         = "kitchen"
+	TEST_CONFIG        = "/Users/markw/.go-sonos"
+	TEST_SONOS         = "Living Room"
 	TEST_RECIVA        = "basement"
-	TEST_DISCOVER_PORT = "13104"
-	TEST_EVENTING_PORT = "13106"
-	TEST_NETWORK       = "eth0"
+	TEST_DISCOVER_PORT = 13104
+	TEST_EVENTING_PORT = 13106
+	TEST_NETWORK       = "en1"
 )
 
 var testSonos *sonos.Sonos
@@ -525,10 +527,10 @@ func TestCoverage(t *testing.T) {
 // Discovery
 //
 func _TestDiscovery(t *testing.T) {
-	if mgr, err := sonos.Discover(TEST_NETWORK, TEST_DISCOVER_PORT); nil != err {
+	if mgr, err := sonos.Discover(TEST_DISCOVER_PORT); nil != err {
 		panic(err)
 	} else {
-		reactor := sonos.MakeReactor(TEST_NETWORK, TEST_EVENTING_PORT)
+		reactor := sonos.MakeReactor(TEST_EVENTING_PORT)
 		found := sonos.ConnectAny(mgr, reactor, sonos.SVC_DEVICE_PROPERTIES)
 		for _, s := range found {
 			id, _ := s.GetHouseholdID()
@@ -1119,7 +1121,7 @@ func TestEvent(t *testing.T) {
 	c.Init()
 	if dev := c.Lookup(TEST_SONOS); nil != dev {
 		exit_chan := make(chan bool)
-		reactor := sonos.MakeReactor(TEST_NETWORK, TEST_EVENTING_PORT)
+		reactor := sonos.MakeReactor(TEST_EVENTING_PORT)
 		go handleEvent_TestEventBrief(reactor, exit_chan)
 		testSonos = sonos.Connect(dev, reactor, sonos.SVC_ALL)
 		<-exit_chan
@@ -1227,5 +1229,47 @@ func TestRecivaGetTimeZone(t *testing.T) {
 		log.Fatal(err)
 	} else {
 		log.Printf("Timezone: %v", n)
+	}
+}
+
+////////////////////////////////////////////////////////
+// Issue #4
+////////////////////////////////////////////////////////
+func read_events(c chan upnp.Event) {
+	for {
+		select {
+		case <-c:
+		}
+	}
+}
+
+func TestIssue_4(t *testing.T) {
+	log.SetFlags(log.Ltime | log.Lshortfile)
+	log.Printf("Discovery: Starting")
+	mgr, err := sonos.Discover(13104)
+	if nil != err {
+		panic(err)
+	}
+	log.Printf("Discovery: Done; Reactor: Starting")
+	reactor := sonos.MakeReactor(13106)
+	go read_events(reactor.Channel()) ///// <------------
+	log.Printf("Reactor: Running; Query: Starting")
+	qry := ssdp.ServiceQueryTerms{
+		ssdp.ServiceKey(sonos.MUSIC_SERVICES): -1,
+	}
+	res := mgr.QueryServices(qry)
+	log.Printf("Query: Done; Connect: Starting")
+	if dev_list, has := res[sonos.MUSIC_SERVICES]; has {
+		for _, dev := range dev_list {
+			if sonos.SONOS == dev.Product() {
+				if _, err := upnp.Describe(dev.Location()); nil != err {
+					panic(err)
+				} else {
+					sonos.Connect(dev, reactor, sonos.SVC_ALL)
+					log.Printf("Connect: Done")
+					break
+				}
+			}
+		}
 	}
 }
